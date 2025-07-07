@@ -1,5 +1,6 @@
 import os
 import logging
+import asyncio
 
 from telegram import Update, Chat
 from telegram.ext import ApplicationBuilder, ContextTypes, CommandHandler
@@ -14,8 +15,6 @@ logging.basicConfig(
     level=logging.INFO,
     filename="logging.log",
 )
-
-
 async def test(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     chat = update.effective_chat
@@ -55,6 +54,16 @@ async def check_subscription(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
     await context.bot.send_message(chat_id=chat.id, text=list(subscribers.values()))
 
+
+# tick every 10 seconds
+
+TICK_DURATION = 5
+async def tick(context: ContextTypes.DEFAULT_TYPE):
+    subscribers_id = subscribers.keys()
+    await asyncio.gather(*[context.bot.send_message(chat_id=user_id, text="tick") for user_id in subscribers_id])
+
+
+
 if __name__ == "__main__":
     application = ApplicationBuilder().token(API_TOKEN).build()
 
@@ -67,5 +76,10 @@ if __name__ == "__main__":
 
     
     application.add_handlers(handlers)
+    application.job_queue.run_repeating(
+        tick,
+        TICK_DURATION,
+        name="ticker"
+    )
 
     application.run_polling()
