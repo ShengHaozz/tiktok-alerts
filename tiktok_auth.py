@@ -7,7 +7,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse
 from uvicorn import Config, Server
 import logging
-import requests
+import httpx
 from datetime import datetime
 import os
 import asyncio
@@ -68,7 +68,7 @@ class AuthApp:
         </html>
         """
 
-    def tts_auth_request(self, auth_code) -> dict:
+    async def tts_auth_request(self, auth_code) -> dict:
         params = {
             "app_key": self.app_key,
             "app_secret": self.app_secret,
@@ -77,13 +77,14 @@ class AuthApp:
         }
 
         self.logger.warning(f"params: {params}")
+        
+        async with httpx.AsyncClient() as client:
+            try:
+                response = client.get(self.TTS_AUTH_ADDRESS, params=params).json()
+            except Exception as e:
+                self.logger.warning(f"TTS Auth Request failed: {e}\nparams: {params}")
 
-        try:
-            response = requests.get(self.TTS_AUTH_ADDRESS, params=params).json()
-        except Exception as e:
-            self.logger.warning(f"TTS Auth Request failed: {e}\nparams: {params}")
-
-            return {}
+                return {}
 
         if not response or response.get("message") != "success":
             self.logger.warning(
@@ -94,7 +95,7 @@ class AuthApp:
         self.logger.debug(f"TTS Auth returned: {response}")
         return response.get("data", {})
     
-    def tts_refresh_request(self):
+    async def tts_refresh_request(self):
         if datetime.fromtimestamp(self.auth_info.get("refresh_token_expire_in")) < datetime.now():
             self.logger.error("TTS Refresh token expire, please re-install")
             return
@@ -107,13 +108,14 @@ class AuthApp:
             "refresh_token": refresh_token,
             "grant_type": "refresh_token",
         }
+        async with httpx.AsyncClient() as client:
 
-        try:
-            response = requests.get(self.TTS_REFRESH_ADDRESS, params=params).json()
-        except Exception as e:
-            self.logger.warning(f"TTS Refresh Request failed: {e}\nparams: {params}")
+            try:
+                response = client.get(self.TTS_REFRESH_ADDRESS, params=params).json()
+            except Exception as e:
+                self.logger.warning(f"TTS Refresh Request failed: {e}\nparams: {params}")
 
-            return {}
+                return {}
 
         if not response or response.get("message") != "success":
             self.logger.warning(
