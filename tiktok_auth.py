@@ -38,7 +38,7 @@ class AuthApp:
             <p>Code: {auth_code}</p>
             """
 
-            tts_auth_response = self.tts_auth_request(auth_code)
+            tts_auth_response = await self.tts_auth_request(auth_code)
             if tts_auth_response:
                 tts_auth_status = f"""
                 <p>
@@ -77,10 +77,10 @@ class AuthApp:
         }
 
         self.logger.warning(f"params: {params}")
-        
+
         async with httpx.AsyncClient() as client:
             try:
-                response = client.get(self.TTS_AUTH_ADDRESS, params=params).json()
+                response = await client.get(self.TTS_AUTH_ADDRESS, params=params).json()
             except Exception as e:
                 self.logger.warning(f"TTS Auth Request failed: {e}\nparams: {params}")
 
@@ -94,14 +94,17 @@ class AuthApp:
 
         self.logger.debug(f"TTS Auth returned: {response}")
         return response.get("data", {})
-    
+
     async def tts_refresh_request(self):
-        if datetime.fromtimestamp(self.auth_info.get("refresh_token_expire_in")) < datetime.now():
+        if (
+            datetime.fromtimestamp(self.auth_info.get("refresh_token_expire_in"))
+            < datetime.now()
+        ):
             self.logger.error("TTS Refresh token expire, please re-install")
             return
 
         refresh_token = self.auth_info.get("refresh_token")
-        
+
         params = {
             "app_key": self.app_key,
             "app_secret": self.app_secret,
@@ -109,11 +112,14 @@ class AuthApp:
             "grant_type": "refresh_token",
         }
         async with httpx.AsyncClient() as client:
-
             try:
-                response = client.get(self.TTS_REFRESH_ADDRESS, params=params).json()
+                response = await client.get(
+                    self.TTS_REFRESH_ADDRESS, params=params
+                ).json()
             except Exception as e:
-                self.logger.warning(f"TTS Refresh Request failed: {e}\nparams: {params}")
+                self.logger.warning(
+                    f"TTS Refresh Request failed: {e}\nparams: {params}"
+                )
 
                 return {}
 
@@ -125,20 +131,25 @@ class AuthApp:
 
         self.logger.debug(f"TTS Refresh returned: {response}")
         return response.get("data", {})
-        
-    def get_access_token(self):
+
+    async def get_access_token(self):
         if not self.auth_info:
             self.logger.error("No auth info")
-            return 
-        
-        access_token_expiry = datetime.fromtimestamp(self.auth_info.get("access_token_expire_in"))
+            return
+
+        elif not self.auth_info.get("access_token_expire_in"):
+            self.logger.error("No access token expiry")
+            return
+
+        access_token_expiry = datetime.fromtimestamp(
+            self.auth_info.get("access_token_expire_in")
+        )
         if datetime.now() > access_token_expiry:
             self.logger.info("Access token expired, refreshing access token")
-            self.auth_info = self.tts_refresh_request()
-        
+            self.auth_info = await self.tts_refresh_request()
+
         return self.auth_info.get("access_token")
 
-    
 
 class AuthService:
     def __init__(self, app_key, app_secret, reload=True):
@@ -148,12 +159,16 @@ class AuthService:
         )
         config = Config(app=self.auth_app_instance.app, reload=reload)
         self.server = Server(config)
-        asyncio.run(self.server.serve())
-    
-    async def get_coroutine(self):
+
+    async def run(self):
         await self.server.serve()
+
+    async def get_access_token(self):
+        await self.auth_app_instance.get_access_token()
 
 
 if __name__ == "__main__":
-    auth_service = AuthService(os.getenv("TT_TEST_APP_KEY"), os.getenv("TT_TEST_APP_SECET"))
-    asyncio.run(auth_service.get_coroutine())
+    auth_service = AuthService(
+        os.getenv("TT_TEST_APP_KEY"), os.getenv("TT_TEST_APP_SECET")
+    )
+    asyncio.run(auth_service.run())
