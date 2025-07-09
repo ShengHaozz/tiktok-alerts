@@ -16,12 +16,14 @@ import asyncio
 class AuthApp:
     app = FastAPI()
     TTS_AUTH_ADDRESS = "https://auth.tiktok-shops.com/api/v2/token/get"
+    TTS_REFRESH_ADDRESS = "https://auth.tiktok-shops.com/api/v2/token/refresh"
 
     def __init__(self, app_key, app_secret):
         self.app = FastAPI()
         self.logger = logging.getLogger(__name__)
         self.app_key = app_key
         self.app_secret = app_secret
+        self.auth_info = {}
 
         # Register route inside __init__
         self.app.get("/tiktokauth", response_class=HTMLResponse)(self.auth_callback)
@@ -46,6 +48,7 @@ class AuthApp:
                     Refresh token expire in: {datetime.fromtimestamp(tts_auth_response.get("refresh_token_expire_in")).strftime("%Y-%m-%d %H:%M:%S")}
                 </p>
                 """
+                self.auth_info = tts_auth_response
             else:
                 tts_auth_status = "TTS Auth Failed"
 
@@ -90,6 +93,50 @@ class AuthApp:
 
         self.logger.debug(f"TTS Auth returned: {response}")
         return response.get("data", {})
+    
+    def tts_refresh_request(self):
+        if datetime.fromtimestamp(self.auth_info.get("refresh_token_expire_in")) < datetime.now():
+            self.logger.error("TTS Refresh token expire, please re-install")
+            return
+
+        refresh_token = self.auth_info.get("refresh_token")
+        
+        params = {
+            "app_key": self.app_key,
+            "app_secret": self.app_secret,
+            "refresh_token": refresh_token,
+            "grant_type": "refresh_token",
+        }
+
+        try:
+            response = requests.get(self.TTS_REFRESH_ADDRESS, params=params).json()
+        except Exception as e:
+            self.logger.warning(f"TTS Refresh Request failed: {e}\nparams: {params}")
+
+            return {}
+
+        if not response or response.get("message") != "success":
+            self.logger.warning(
+                f"TTS Auth Refresh not successful:\nresponse: {response}\nparams: {params}"
+            )
+            return {}
+
+        self.logger.debug(f"TTS Refresh returned: {response}")
+        return response.get("data", {})
+        
+    def get_access_token(self):
+        if not self.auth_info:
+            self.logger.error("No auth info")
+            return 
+        
+        access_token_expiry = datetime.fromtimestamp(self.auth_info.get("access_token_expire_in"))
+        if datetime.now() > access_token_expiry:
+            self.logger.info("Access token expired, refreshing access token")
+            self.auth_info = self.tts_refresh_request()
+        
+        return self.auth_info.get("access_token")
+
+    
 
 class AuthService:
     def __init__(self, app_key, app_secret, reload=True):
@@ -99,6 +146,7 @@ class AuthService:
         )
         config = Config(app=self.auth_app_instance.app, reload=reload)
         self.server = Server(config)
+        asyncio.run(self.server.serve())
     
     async def get_coroutine(self):
         await self.server.serve()
