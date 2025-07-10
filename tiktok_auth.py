@@ -24,6 +24,7 @@ class AuthApp:
         self.app_key = app_key
         self.app_secret = app_secret
         self.auth_info = {}
+        self._token_lock = asyncio.Lock()
 
         # Register route inside __init__
         self.app.get("/tiktokauth", response_class=HTMLResponse)(self.auth_callback)
@@ -48,7 +49,7 @@ class AuthApp:
                     Refresh token expire in: {datetime.fromtimestamp(tts_auth_response.get("refresh_token_expire_in")).strftime("%Y-%m-%d %H:%M:%S")}
                 </p>
                 """
-                self.auth_info = tts_auth_response
+                self.auth_info = tts_auth_response.copy()
             else:
                 tts_auth_status = "TTS Auth Failed"
 
@@ -80,7 +81,8 @@ class AuthApp:
 
         async with httpx.AsyncClient() as client:
             try:
-                response = await client.get(self.TTS_AUTH_ADDRESS, params=params).json()
+                response_json = await client.get(self.TTS_AUTH_ADDRESS, params=params)
+                response = response_json.json()
             except Exception as e:
                 self.logger.warning(f"TTS Auth Request failed: {e}\nparams: {params}")
 
@@ -133,18 +135,16 @@ class AuthApp:
         return response.get("data", {})
 
     async def get_access_token(self):
-        if not self.auth_info:
-            self.logger.error("No auth info")
-            return
+        async with self._token_lock:
+            while not self.auth_info:
+                self.logger.debug("No auth info")
+                await asyncio.sleep(5)
 
-        elif not self.auth_info.get("access_token_expire_in"):
+        if not self.auth_info.get("access_token_expire_in"):
             self.logger.error("No access token expiry")
             return
 
-        access_token_expiry = datetime.fromtimestamp(
-            self.auth_info.get("access_token_expire_in")
-        )
-        if datetime.now() > access_token_expiry:
+        if datetime.now().timestamp() > self.auth_info.get("access_token_expire_in"):
             self.logger.info("Access token expired, refreshing access token")
             self.auth_info = await self.tts_refresh_request()
 
@@ -159,16 +159,36 @@ class AuthService:
         )
         config = Config(app=self.auth_app_instance.app, reload=reload)
         self.server = Server(config)
+        self.has_retrieved_token = False
 
     async def run(self):
         await self.server.serve()
 
+    async def stop(self):
+        self.server.should_exit = True
+
     async def get_access_token(self):
-        await self.auth_app_instance.get_access_token()
+        if not self.has_retrieved_token:
+            fastapi_task = asyncio.create_task(self.run())
+            access_token = await self.auth_app_instance.get_access_token()
+            await self.stop()
+            await fastapi_task
+            self.has_retrieved_token = True
+        else:
+            access_token = await self.auth_app_instance.get_access_token()
+
+        return access_token
+
+
+async def main():
+    auth_service = AuthService(
+        os.getenv("TT_TEST_APP_KEY"), os.getenv("TT_TEST_APP_SECRET")
+    )
+    asyncio.create_task(auth_service.run())
+
+    access_token = await auth_service.get_access_token()
+    print(access_token)
 
 
 if __name__ == "__main__":
-    auth_service = AuthService(
-        os.getenv("TT_TEST_APP_KEY"), os.getenv("TT_TEST_APP_SECET")
-    )
-    asyncio.run(auth_service.run())
+    asyncio.run(main())
