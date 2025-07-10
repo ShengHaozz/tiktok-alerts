@@ -77,8 +77,6 @@ class AuthApp:
             "grant_type": "authorized_code",
         }
 
-        self.logger.warning(f"params: {params}")
-
         async with httpx.AsyncClient() as client:
             try:
                 response_json = await client.get(self.TTS_AUTH_ADDRESS, params=params)
@@ -184,10 +182,12 @@ async def main():
     auth_service = AuthService(
         os.getenv("TT_TEST_APP_KEY"), os.getenv("TT_TEST_APP_SECRET")
     )
-    asyncio.create_task(auth_service.run())
 
     access_token = await auth_service.get_access_token()
     print(access_token)
+
+    access_token_2 = await auth_service.get_access_token()
+    print(access_token_2)
 
 
 if __name__ == "__main__":
