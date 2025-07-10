@@ -150,12 +150,12 @@ class AuthApp:
 
 
 class AuthService:
-    def __init__(self, app_key, app_secret, reload=True):
+    def __init__(self, app_key, app_secret):
         self.auth_app_instance = AuthApp(
             app_key=app_key,
             app_secret=app_secret,
         )
-        config = Config(app=self.auth_app_instance.app, reload=reload)
+        config = Config(app=self.auth_app_instance.app)
         self.server = Server(config)
         self.has_retrieved_token = False
 
