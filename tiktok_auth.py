@@ -159,17 +159,17 @@ class AuthService:
         self.server = Server(config)
         self.has_retrieved_token = False
 
-    async def run(self):
+    async def _run(self):
         await self.server.serve()
 
-    async def stop(self):
+    async def _stop(self):
         self.server.should_exit = True
 
     async def get_access_token(self):
         if not self.has_retrieved_token:
-            fastapi_task = asyncio.create_task(self.run())
+            fastapi_task = asyncio.create_task(self._run())
             access_token = await self.auth_app_instance.get_access_token()
-            await self.stop()
+            await self._stop()
             await fastapi_task
             self.has_retrieved_token = True
         else:
