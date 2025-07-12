@@ -3,10 +3,8 @@
 Spins up server to receive authentication code upon installation of tiktok app
 """
 
-from fastapi import FastAPI, Request
+from fastapi import Request
 from fastapi.responses import HTMLResponse
-from uvicorn import Config, Server
-import logging
 import httpx
 from datetime import datetime
 import os
