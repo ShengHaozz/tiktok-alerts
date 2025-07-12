@@ -81,8 +81,6 @@ class TiktokConnector:
         self.logger = logging.getLogger(__name__)
         self.shop = None
 
-        self.get_authorized_shops()
-
     async def _get_access_token(self):
         return await self.auth_service.get_access_token()
 
