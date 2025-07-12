@@ -156,7 +156,7 @@ class AuthService(Service):
             access_token = await self.task_wrapper(self.app_instance.get_access_token)
             self.has_retrieved_token = True
         else:
-            access_token = await self.auth_app_instance.get_access_token()
+            access_token = await self.app_instance.get_access_token()
 
         return access_token
 
