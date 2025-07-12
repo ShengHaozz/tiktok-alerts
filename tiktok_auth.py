@@ -11,23 +11,22 @@ import httpx
 from datetime import datetime
 import os
 import asyncio
+from base_fastapi import App, Service
 
 
-class AuthApp:
-    app = FastAPI()
+class AuthApp(App):
     TTS_AUTH_ADDRESS = "https://auth.tiktok-shops.com/api/v2/token/get"
     TTS_REFRESH_ADDRESS = "https://auth.tiktok-shops.com/api/v2/token/refresh"
 
     def __init__(self, app_key, app_secret):
-        self.app = FastAPI()
-        self.logger = logging.getLogger(__name__)
+        super().__init__()
         self.app_key = app_key
         self.app_secret = app_secret
         self.auth_info = {}
         self._token_lock = asyncio.Lock()
 
         # Register route inside __init__
-        self.app.get("/tiktokauth", response_class=HTMLResponse)(self.auth_callback)
+        self.fastapi_app.get("/tiktokauth", response_class=HTMLResponse)(self.auth_callback)
 
     async def auth_callback(self, request: Request):
         auth_code = request.query_params.get("code")
@@ -149,28 +148,14 @@ class AuthApp:
         return self.auth_info.get("access_token")
 
 
-class AuthService:
-    def __init__(self, app_key, app_secret):
-        self.auth_app_instance = AuthApp(
-            app_key=app_key,
-            app_secret=app_secret,
-        )
-        config = Config(app=self.auth_app_instance.app)
-        self.server = Server(config)
+class AuthService(Service):
+    def __init__(self, app: AuthApp):
+        super().__init__(app)
         self.has_retrieved_token = False
-
-    async def _run(self):
-        await self.server.serve()
-
-    async def _stop(self):
-        self.server.should_exit = True
 
     async def get_access_token(self):
         if not self.has_retrieved_token:
-            fastapi_task = asyncio.create_task(self._run())
-            access_token = await self.auth_app_instance.get_access_token()
-            await self._stop()
-            await fastapi_task
+            access_token = await self.task_wrapper(self.app_instance.get_access_token)
             self.has_retrieved_token = True
         else:
             access_token = await self.auth_app_instance.get_access_token()
