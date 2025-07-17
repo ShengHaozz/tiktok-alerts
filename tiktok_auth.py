@@ -24,7 +24,9 @@ class AuthApp(App):
         self._token_lock = asyncio.Lock()
 
         # Register route inside __init__
-        self.fastapi_app.get("/tiktokauth", response_class=HTMLResponse)(self.auth_callback)
+        self.fastapi_app.get("/tiktokauth", response_class=HTMLResponse)(
+            self.auth_callback
+        )
 
     async def auth_callback(self, request: Request):
         auth_code = request.query_params.get("code")
@@ -163,7 +165,7 @@ class AuthService(Service):
 
 async def main():
     auth_service = AuthService(
-        os.getenv("TT_TEST_APP_KEY"), os.getenv("TT_TEST_APP_SECRET")
+        AuthApp(os.getenv("TT_TEST_APP_KEY"), os.getenv("TT_TEST_APP_SECRET"))
     )
 
     access_token = await auth_service.get_access_token()
